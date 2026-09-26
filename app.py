@@ -7,46 +7,109 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom Styling
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #1e222d;
+        border-radius: 8px;
+        padding: 15px;
+        border: 1px solid #333a4d;
+    }
+    .badge-critical { background-color: #ff4b4b; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
+    .badge-high { background-color: #ffa116; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
+    .badge-medium { background-color: #ffcc00; color: black; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
+    .badge-low { background-color: #00c0f2; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🔍 Intelligent Code Review Coach")
-st.markdown("Automated static code review, bug detection, and security guidance.")
+st.caption("AI-assisted static code analysis, security auditing, and quality grading.")
 
-default_snippet = '''import os
+# Sidebar preset selector
+st.sidebar.header("Demo Snippets")
+preset = st.sidebar.selectbox(
+    "Load test sample:",
+    ["Custom Code", "High Risk Vulnerabilities", "Clean Python Code"]
+)
 
-def process_data(payload, cache=[]):
-    api_key = "AIzaSyD-fakeKeyExample12345"
+default_code = """import os
+import sys
+
+api_key = "AIzaSyD-sampleSecurityKey999"
+
+def process_batch(items, cache=[]):
+    list = [1, 2, 3]
+    if items == None:
+        return None
     try:
-        result = eval(payload)
+        output = eval(items)
     except:
-        result = None
-    return result
+        output = None
+    print(output)
+    return output
+"""
+
+if preset == "High Risk Vulnerabilities":
+    code_input = default_code
+elif preset == "Clean Python Code":
+    code_input = '''import json
+from typing import Optional, List, Any
+
+def process_batch(items: str, cache: Optional[List[Any]] = None) -> Optional[Any]:
+    """Safely decode and parse inputs without mutable defaults or dangerous eval."""
+    if cache is None:
+        cache = []
+    
+    if items is None:
+        return None
+
+    try:
+        return json.loads(items)
+    except json.JSONDecodeError:
+        return None
 '''
+else:
+    code_input = default_code
 
-code_input = st.text_area("Paste code snippet to analyze:", value=default_snippet, height=220)
+col_left, col_right = st.columns([1.1, 0.9])
 
-if st.button("Run Code Review", type="primary"):
-    if not code_input.strip():
-        st.warning("Please provide code to analyze.")
-    else:
-        report = review_code(code_input)
+with col_left:
+    st.subheader("Source Code Input")
+    user_code = st.text_area("Paste Python code snippet:", value=code_input, height=380)
+    analyze_btn = st.button("🚀 Analyze Code", type="primary", use_container_width=True)
 
+if analyze_btn or user_code:
+    results = review_code(user_code)
+    total_issues = results["total_issues"]
+    total_lines = results["total_lines"]
+    
+    # Calculate simple quality score (100 minus penalty)
+    score = max(0, 100 - (total_issues * 15))
+
+    with col_right:
         st.subheader("Analysis Summary")
-        col1, col2 = st.columns(2)
-        col1.metric("Lines of Code", report["total_lines"])
-        col2.metric("Issues Found", report["total_issues"])
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Lines of Code", total_lines)
+        m2.metric("Total Issues", total_issues)
+        m3.metric("Health Score", f"{score}/100")
 
-        st.divider()
-
-        if report["total_issues"] == 0:
-            st.success("✅ No issues detected. Clean and ready to go!")
+        if total_issues == 0:
+            st.success("✅ Clean code! No security risks or style defects found.")
         else:
-            for item in report["issues"]:
-                badge = {
-                    "Critical": "🚨 Critical",
-                    "High": "⚠️ High",
-                    "Medium": "⚡ Medium",
-                    "Low": "ℹ️ Low"
-                }.get(item["severity"], item["severity"])
+            # Interactive Filter
+            filter_sev = st.multiselect(
+                "Filter by Severity:",
+                ["Critical", "High", "Medium", "Low"],
+                default=["Critical", "High", "Medium", "Low"]
+            )
 
-                with st.expander(f"Line {item['line']} — {item['type']} ({badge})"):
+            filtered_issues = [i for i in results["issues"] if i["severity"] in filter_sev]
+
+            for item in filtered_issues:
+                sev = item["severity"]
+                icon = "🚨" if sev == "Critical" else ("⚠️" if sev in ("High", "Medium") else "ℹ️")
+                
+                with st.expander(f"{icon} Line {item['line']} — {item['type']} ({sev})", expanded=True):
                     st.write(f"**Issue:** {item['message']}")
-                    st.info(f"**Recommended Fix:** {item['fix']}")
+                    st.info(f"💡 **Suggested Fix:** {item['fix']}")
